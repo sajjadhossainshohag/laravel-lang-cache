@@ -32,7 +32,7 @@ class LangClearCommand extends Command
      */
     public function handle(Filesystem $files)
     {
-        $files->delete(LangCache::path($this->laravel));
+        $files->deleteDirectory(LangCache::path($this->laravel));
 
         $this->components->info('Translation cache cleared successfully.');
     }

@@ -51,19 +51,33 @@ class LangCacheCommand extends Command
 
         $translations = $this->getTranslations($this->getFreshLoader());
 
-        $path = LangCache::path($this->laravel);
+        $this->files->ensureDirectoryExists(LangCache::path($this->laravel));
+
+        // Each locale gets its own file so a request only loads the locales it uses. We also
+        // write a serialized copy, which loads faster when OPcache isn't enabled. The manifest
+        // is written last, so a failed run never leaves a partial cache behind.
+        foreach ($translations as $locale => $lines) {
+            $path = LangCache::localePath($this->laravel, $locale);
+
+            $this->files->put(
+                $path, '<?php return '.var_export($lines, true).';'.PHP_EOL
+            );
+
+            try {
+                require $path;
+
+                $this->files->put(LangCache::serializedPath($this->laravel, $locale), serialize($lines));
+            } catch (Throwable $e) {
+                $this->files->deleteDirectory(LangCache::path($this->laravel));
+
+                throw new LogicException('Your translation files are not serializable.', 0, $e);
+            }
+        }
 
         $this->files->put(
-            $path, '<?php return '.var_export($translations, true).';'.PHP_EOL
+            LangCache::manifestPath($this->laravel),
+            '<?php return '.var_export(array_keys($translations), true).';'.PHP_EOL
         );
-
-        try {
-            require $path;
-        } catch (Throwable $e) {
-            $this->files->delete($path);
-
-            throw new LogicException('Your translation files are not serializable.', 0, $e);
-        }
 
         $this->components->info('Translations cached successfully.');
     }

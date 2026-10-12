@@ -37,7 +37,7 @@ class LangCacheCommandTest extends TestCase
     {
         (new Filesystem)->deleteDirectory($this->langPath);
 
-        @unlink(LangCache::path($this->app));
+        (new Filesystem)->deleteDirectory(LangCache::path($this->app));
 
         parent::tearDown();
     }
@@ -66,9 +66,11 @@ class LangCacheCommandTest extends TestCase
 
         $this->artisan('lang:cache')->assertSuccessful();
 
-        $this->assertFileExists(LangCache::path($this->app));
+        $this->assertSame(['en', 'fr'], require LangCache::manifestPath($this->app));
+        $this->assertFileExists(LangCache::localePath($this->app, 'en'));
+        $this->assertFileExists(LangCache::localePath($this->app, 'fr'));
 
-        $cached = new CachedFileLoader(new Filesystem, CachedFileLoader::pathsOf($loader), require LangCache::path($this->app));
+        $cached = new CachedFileLoader(new Filesystem, CachedFileLoader::pathsOf($loader), LangCache::files($this->app));
 
         $fresh = new FileLoader(new Filesystem, CachedFileLoader::pathsOf($loader));
         $fresh->addNamespace('package', "{$this->langPath}/package");
@@ -89,6 +91,13 @@ class LangCacheCommandTest extends TestCase
                 $fresh->load($locale, $group, $namespace),
                 $cached->load($locale, $group, $namespace),
                 "Cached lines differ for [{$locale}] [{$namespace}::{$group}]."
+            );
+        }
+
+        foreach (['en', 'fr'] as $locale) {
+            $this->assertSame(
+                require LangCache::localePath($this->app, $locale),
+                unserialize(file_get_contents(LangCache::serializedPath($this->app, $locale)))
             );
         }
 
@@ -118,6 +127,38 @@ class LangCacheCommandTest extends TestCase
         $this->assertSame('Hello', __('Hello'));
         $this->assertSame('overridden', __('package::messages.foo'));
         $this->assertSame('baz', __('package::messages.bar'));
+    }
+
+    public function testTheFormatIsChosenByWhetherOpcacheIsEnabled()
+    {
+        $this->artisan('lang:cache')->assertSuccessful();
+
+        $extension = LangCache::opcacheEnabled() ? '.php' : '.ser';
+
+        foreach (LangCache::files($this->app) as $path) {
+            $this->assertStringEndsWith($extension, $path);
+        }
+    }
+
+    public function testBothFormatsReturnTheSameLines()
+    {
+        $this->artisan('lang:cache')->assertSuccessful();
+
+        $paths = CachedFileLoader::pathsOf($this->app['translation.loader']);
+
+        $php = new CachedFileLoader(new Filesystem, $paths, [
+            'en' => LangCache::localePath($this->app, 'en'),
+        ]);
+
+        $serialized = new CachedFileLoader(new Filesystem, $paths, [
+            'en' => LangCache::serializedPath($this->app, 'en'),
+        ]);
+
+        foreach ([['*', '*'], ['messages', '*'], ['admin/users', '*'], ['messages', 'package']] as [$group, $namespace]) {
+            $this->assertSame($php->load('en', $group, $namespace), $serialized->load('en', $group, $namespace));
+        }
+
+        $this->assertSame('bar', $serialized->load('en', 'messages', '*')['foo']);
     }
 
     public function testCacheIsRebuiltFromFilesWhenAlreadyCached()
@@ -151,10 +192,11 @@ class LangCacheCommandTest extends TestCase
     public function testCacheCanBeCleared()
     {
         $this->artisan('lang:cache')->assertSuccessful();
-        $this->assertFileExists(LangCache::path($this->app));
+        $this->assertTrue(LangCache::isCached($this->app));
 
         $this->artisan('lang:clear')->assertSuccessful();
-        $this->assertFileDoesNotExist(LangCache::path($this->app));
+        $this->assertFalse(LangCache::isCached($this->app));
+        $this->assertDirectoryDoesNotExist(LangCache::path($this->app));
     }
 
     public function testOptimizeCachesAndClearsTranslations()
@@ -164,10 +206,10 @@ class LangCacheCommandTest extends TestCase
         }
 
         Artisan::call('optimize', ['--except' => 'config,events,routes,views']);
-        $this->assertFileExists(LangCache::path($this->app));
+        $this->assertTrue(LangCache::isCached($this->app));
 
         Artisan::call('optimize:clear', ['--except' => 'cache,compiled,config,events,routes,views']);
-        $this->assertFileDoesNotExist(LangCache::path($this->app));
+        $this->assertFalse(LangCache::isCached($this->app));
     }
 
     public function testAboutCommandShowsTheCacheStatus()
@@ -189,6 +231,7 @@ class LangCacheCommandTest extends TestCase
             $this->assertSame('Your translation files are not serializable.', $e->getMessage());
         }
 
-        $this->assertFileDoesNotExist(LangCache::path($this->app));
+        $this->assertFalse(LangCache::isCached($this->app));
+        $this->assertDirectoryDoesNotExist(LangCache::path($this->app));
     }
 }

@@ -6,23 +6,42 @@ Cache your Laravel translation files the same way you cache config and routes.
 php artisan lang:cache
 ```
 
-Laravel reads your language files from disk on every request that translates something. Each JSON file is decoded with `json_decode()`, and each PHP group file is loaded and merged from every path (the framework, your app, packages, and `lang/vendor` overrides). This package compiles all of that into one PHP file at deploy time, so each request only needs a single `require` that OPcache serves straight from memory.
+Laravel reads your language files from disk on every request that translates something. Each JSON file is decoded with `json_decode()`, and each PHP group file is loaded and merged from every path (the framework, your app, packages, and `lang/vendor` overrides). This package compiles all of that into plain PHP files at deploy time, one per locale, so each request only needs a single `require` that OPcache serves straight from memory.
 
 ## Benchmark
 
-These numbers come from a 1,000-key `en.json` and five PHP groups with 200 keys each. Every simulated request creates a new translator, then looks up one JSON key and keys from three groups, averaged over 2,000 requests (PHP 8.4, Laravel 13).
+The fixtures are a multilingual app with seven locales. Each locale's keys are split evenly between a JSON file and five PHP groups. Every simulated request creates a new translator for the `de` locale (with `en` as the fallback), then looks up one JSON key and keys from three groups (PHP 8.4, Laravel 13).
 
-| | Laravel `FileLoader` | With `lang:cache` | Speedup |
+**With OPcache** (typical production):
+
+| Keys per locale | Laravel `FileLoader` | With `lang:cache` | Speedup |
 |---|---|---|---|
-| **OPcache enabled** (typical production) | ~600 µs | ~7 µs | **~85×** |
-| OPcache disabled | ~900 µs | ~650 µs | ~1.4× |
+| 2,000 | ~545 µs | ~9 µs | **~62×** |
+| 10,000 | ~1.55 ms | ~9 µs | **~170×** |
+| 25,000 | ~3.5 ms | ~9 µs | **~380×** |
+| 50,000 | ~7.9 ms | ~10 µs | **~830×** |
+| 75,000 | ~11.6 ms | ~11 µs | **~1,100×** |
+| 100,000 | ~17 ms | ~11 µs | **~1,600×** |
 
-With OPcache, that saves about **0.6 ms on every request** that translates something, including validation error messages. The gain grows with the size of your JSON files and the number of groups a request uses.
+**Without OPcache:**
 
-These numbers measure translation loading only, not a full HTTP request. To run the benchmark on your own machine:
+| Keys per locale | Laravel `FileLoader` | With `lang:cache` | Speedup |
+|---|---|---|---|
+| 2,000 | ~855 µs | ~325 µs | ~2.6× |
+| 10,000 | ~2.6 ms | ~1.3 ms | ~2× |
+| 25,000 | ~7 ms | ~4.5 ms | ~1.5× |
+| 50,000 | ~14 ms | ~7.4 ms | ~1.9× |
+| 75,000 | ~20 ms | ~13 ms | ~1.5× |
+| 100,000 | ~25 ms | ~16 ms | ~1.6× |
+
+With OPcache, the cached loader takes about the same time no matter how many translations you have, because OPcache serves the cached arrays straight from shared memory. Laravel's file loader has to decode and merge every file again on each request, so its cost grows with the size of your translations. A small app saves about **0.5 ms per request**; an app with 100,000 keys per locale saves about **17 ms**.
+
+Without OPcache, PHP would have to compile the cached PHP files on every request, so the package reads a serialized copy instead, which is more than twice as fast. It's still worth enabling OPcache, though, since it speeds up your whole application, not just translations.
+
+These numbers measure translation loading only, not a full HTTP request. Each row is the average of two runs; the smaller sizes vary by a few percent, while the larger ones without OPcache vary more. To run the benchmark on your own machine, pass the number of keys per locale (2,000 by default):
 
 ```bash
-php -d opcache.enable_cli=1 -d opcache.file_update_protection=0 benchmark/run.php
+php -d opcache.enable_cli=1 -d opcache.file_update_protection=0 benchmark/run.php 10000
 ```
 
 ## Installation
@@ -47,7 +66,7 @@ Remove it:
 php artisan lang:clear
 ```
 
-The cache file is written to `bootstrap/cache/translations.php`.
+The cache is written to `bootstrap/cache/translations/`, with one file per locale.
 
 ### `optimize` support
 
@@ -71,8 +90,9 @@ To skip it, use `php artisan optimize --except=translations`.
 
 - `lang:cache` finds every PHP and JSON translation file in your app's lang path, the framework's lang path, package namespaces (`loadTranslationsFrom`), package JSON paths (`loadJsonTranslationsFrom`), and `lang/vendor` overrides.
 - Each group is loaded through Laravel's own `FileLoader`, so the cached lines are **exactly** what Laravel would have loaded, with the same merge order and override rules.
-- At runtime, when the cache file exists, the package replaces Laravel's default translation loader with a loader that reads from the cached array. Locales that aren't in the cache fall back to reading files as usual.
-- If the cache file doesn't exist, nothing changes: Laravel's normal loader is used.
+- Each locale is written to its own file, plus a small manifest listing the cached locales. Every locale is saved twice: as a PHP file, which OPcache can serve straight from memory, and as a serialized file, which loads faster when OPcache is disabled. The package picks the right one automatically.
+- At runtime, when the cache exists, the package replaces Laravel's default translation loader with a loader that reads from the cached files. A locale's file is only loaded the first time that locale is used, so a request doesn't pay for languages it never touches. Locales that aren't in the cache fall back to reading files as usual.
+- If the cache doesn't exist, nothing changes: Laravel's normal loader is used.
 - If your app binds its own custom translation loader, the package leaves it alone.
 
 ## Things to know

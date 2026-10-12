@@ -57,6 +57,61 @@ class CachedFileLoaderTest extends TestCase
         $this->assertSame([], $loader->load('en', 'messages', 'package'));
     }
 
+    public function testLocaleFilesAreOnlyLoadedWhenTheLocaleIsUsed()
+    {
+        $files = Mockery::mock(Filesystem::class);
+        $files->shouldNotReceive('exists');
+
+        $path = tempnam(sys_get_temp_dir(), 'lang');
+        file_put_contents($path, "<?php return ['*' => ['messages' => ['foo' => 'le bar']]];");
+
+        $loader = new CachedFileLoader($files, __DIR__, [
+            'en' => __DIR__.'/this-file-does-not-exist.php',
+            'fr' => $path,
+        ]);
+
+        try {
+            $this->assertSame(['foo' => 'le bar'], $loader->load('fr', 'messages', '*'));
+            $this->assertSame([], $loader->load('fr', 'missing', '*'));
+        } finally {
+            unlink($path);
+        }
+
+        // Already loaded, so the deleted file isn't read again...
+        $this->assertSame(['foo' => 'le bar'], $loader->load('fr', 'messages', '*'));
+    }
+
+    public function testSerializedLocaleFilesCanBeLoaded()
+    {
+        $files = Mockery::mock(Filesystem::class);
+        $files->shouldNotReceive('exists');
+
+        $path = tempnam(sys_get_temp_dir(), 'lang').'.ser';
+        file_put_contents($path, serialize(['*' => ['messages' => ['foo' => 'le bar']]]));
+
+        $loader = new CachedFileLoader($files, __DIR__, ['fr' => $path]);
+
+        try {
+            $this->assertSame(['foo' => 'le bar'], $loader->load('fr', 'messages', '*'));
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function testSerializedLocaleFilesCannotCreateObjects()
+    {
+        $path = tempnam(sys_get_temp_dir(), 'lang').'.ser';
+        file_put_contents($path, serialize(['*' => ['messages' => ['foo' => new \ArrayObject]]]));
+
+        $loader = new CachedFileLoader(Mockery::mock(Filesystem::class), __DIR__, ['fr' => $path]);
+
+        try {
+            $this->assertInstanceOf(\__PHP_Incomplete_Class::class, $loader->load('fr', 'messages', '*')['foo']);
+        } finally {
+            unlink($path);
+        }
+    }
+
     public function testLoadMethodFallsBackToFilesForLocalesThatAreNotCached()
     {
         $files = Mockery::mock(Filesystem::class);

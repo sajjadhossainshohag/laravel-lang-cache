@@ -10,7 +10,11 @@ class CachedFileLoader extends FileLoader
     /**
      * The cached translations, keyed by locale, namespace, and group.
      *
-     * @var array
+     * A locale may also map to the path of a file that returns its translations. That
+     * file is only loaded the first time the locale is used, so a request doesn't pay
+     * for the locales it never touches.
+     *
+     * @var array<string, array|string>
      */
     protected $cache;
 
@@ -19,7 +23,7 @@ class CachedFileLoader extends FileLoader
      *
      * @param  \Illuminate\Filesystem\Filesystem  $files
      * @param  array|string  $path
-     * @param  array  $cache
+     * @param  array<string, array|string>  $cache
      */
     public function __construct(Filesystem $files, array|string $path, array $cache)
     {
@@ -42,7 +46,26 @@ class CachedFileLoader extends FileLoader
             return parent::load($locale, $group, $namespace);
         }
 
+        if (is_string($this->cache[$locale])) {
+            $this->cache[$locale] = $this->loadFile($this->cache[$locale]);
+        }
+
         return $this->cache[$locale][$namespace ?? '*'][$group] ?? [];
+    }
+
+    /**
+     * Load the cached translations from the given file.
+     *
+     * @param  string  $path
+     * @return array
+     */
+    protected function loadFile($path)
+    {
+        if (str_ends_with($path, '.ser')) {
+            return unserialize(file_get_contents($path), ['allowed_classes' => false]);
+        }
+
+        return require $path;
     }
 
     /**

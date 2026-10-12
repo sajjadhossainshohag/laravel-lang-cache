@@ -24,7 +24,7 @@ class LangCacheServiceProvider extends ServiceProvider
                 return $loader;
             }
 
-            $cached = new CachedFileLoader($app['files'], CachedFileLoader::pathsOf($loader), require LangCache::path($app));
+            $cached = new CachedFileLoader($app['files'], CachedFileLoader::pathsOf($loader), LangCache::files($app));
 
             foreach ($loader->jsonPaths() as $path) {
                 $cached->addJsonPath($path);
