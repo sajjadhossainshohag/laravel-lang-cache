@@ -34,11 +34,7 @@ Time to load translations per request, for an app with seven locales (PHP 8.4, L
 | 75,000 | ~11.6 ms | ~11 µs | **~1,100×** | ~1.5× |
 | 100,000 | ~17 ms | ~11 µs | **~1,600×** | ~1.6× |
 
-Times are with OPcache enabled. They cover translation loading only, not a full request. Run it yourself:
-
-```bash
-php -d opcache.enable_cli=1 -d opcache.file_update_protection=0 benchmark/run.php 10000
-```
+Times are with OPcache enabled. They cover translation loading only, not a full request.
 
 ## Good to know
 
