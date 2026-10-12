@@ -1,0 +1,48 @@
+{
+    "name": "sajjadhossainshohag/laravel-lang-cache",
+    "description": "Compile Laravel translation files into a single cached PHP file with php artisan lang:cache.",
+    "keywords": ["laravel", "translation", "localization", "lang", "cache", "performance"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Sajjad Hossain Shohag",
+            "email": "sajjadhossainshohagbd@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/console": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/filesystem": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/translation": "^10.0|^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^10.5|^11.5|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SajjadHossainShohag\\LangCache\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SajjadHossainShohag\\LangCache\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "SajjadHossainShohag\\LangCache\\LangCacheServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
